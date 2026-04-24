@@ -1,5 +1,6 @@
 package com.jetcemetery.twotwothree
 
+import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,6 +9,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,7 +32,11 @@ import java.time.format.TextStyle
 import java.util.*
 
 @Composable
-fun CalendarScreen(modifier: Modifier = Modifier) {
+fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManager? = null) {
+    val context = LocalContext.current
+    val workDayLabel by settingsManager?.workDayLabel?.collectAsState(initial = "Work Day") ?: remember { mutableStateOf("Work Day") }
+    val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
+    
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     
@@ -56,6 +63,9 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
                 scope.launch {
                     pagerState.scrollToPage(initialPage)
                 }
+            },
+            onSettingsClick = {
+                context.startActivity(Intent(context, SettingsActivity::class.java))
             }
         )
         
@@ -80,13 +90,13 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
         }
         
         if (!isLandscape) {
-            ScheduleLegend()
+            ScheduleLegend(workDayLabel, offDayLabel)
         }
     }
 }
 
 @Composable
-fun ScheduleLegend() {
+fun ScheduleLegend(workDayLabel: String, offDayLabel: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -94,9 +104,9 @@ fun ScheduleLegend() {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LegendItem(color = MaterialTheme.colorScheme.primaryContainer, label = "Work Day")
+        LegendItem(color = MaterialTheme.colorScheme.primaryContainer, label = workDayLabel)
         Spacer(modifier = Modifier.width(24.dp))
-        LegendItem(color = Color.Transparent, label = "Off Day", border = true)
+        LegendItem(color = Color.Transparent, label = offDayLabel, border = true)
     }
 }
 
@@ -119,7 +129,8 @@ fun LegendItem(color: Color, label: String, border: Boolean = false) {
 fun CalendarHeader(
     currentMonth: YearMonth,
     compact: Boolean = false,
-    onTodayClick: () -> Unit
+    onTodayClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Surface(
         tonalElevation = 2.dp,
@@ -147,11 +158,19 @@ fun CalendarHeader(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            IconButton(
-                onClick = onTodayClick,
-                modifier = if (compact) Modifier.size(32.dp) else Modifier
-            ) {
-                Icon(Icons.Default.Today, contentDescription = "Today")
+            Row {
+                IconButton(
+                    onClick = onTodayClick,
+                    modifier = if (compact) Modifier.size(32.dp) else Modifier
+                ) {
+                    Icon(Icons.Default.Today, contentDescription = "Today")
+                }
+                IconButton(
+                    onClick = onSettingsClick,
+                    modifier = if (compact) Modifier.size(32.dp) else Modifier
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                }
             }
         }
     }
@@ -277,6 +296,6 @@ fun DayItem(date: LocalDate) {
 @Composable
 fun CalendarPreview() {
     TwoTwoThreeTheme {
-        CalendarScreen()
+        CalendarScreen(settingsManager = null)
     }
 }

@@ -15,11 +15,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        val settingsManager = SettingsManager(this)
         enableEdgeToEdge()
         setContent {
             TwoTwoThreeTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    CalendarScreen(modifier = Modifier.padding(innerPadding))
+                    CalendarScreen(
+                        modifier = Modifier.padding(innerPadding),
+                        settingsManager = settingsManager
+                    )
                 }
             }
         }
