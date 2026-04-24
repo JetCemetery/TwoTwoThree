@@ -1,4 +1,10 @@
 <resources>
 
     <style name="Theme.TwoTwoThree" parent="Theme.MaterialComponents.Light" />
+
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/calendar</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="postSplashScreenTheme">@style/Theme.TwoTwoThree</item>
+    </style>
 </resources>
