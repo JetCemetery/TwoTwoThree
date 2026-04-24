@@ -1,5 +1,6 @@
 package com.jetcemetery.twotwothree
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +30,9 @@ import java.util.*
 
 @Composable
 fun CalendarScreen(modifier: Modifier = Modifier) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     val initialPage = 500 // Arbitrary middle point for the pager
     val pagerState = rememberPagerState(initialPage = initialPage) { 1000 }
@@ -46,14 +51,19 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
     ) {
         CalendarHeader(
             currentMonth = currentMonth,
+            compact = isLandscape,
             onTodayClick = {
                 scope.launch {
                     pagerState.scrollToPage(initialPage)
                 }
             }
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        DayOfWeekHeader()
+        
+        if (!isLandscape) {
+            Spacer(modifier = Modifier.height(8.dp))
+            DayOfWeekHeader()
+        }
+
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.weight(1f),
@@ -61,9 +71,17 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
             beyondViewportPageCount = 1
         ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
-            CalendarGrid(month)
+            Column {
+                if (isLandscape) {
+                    DayOfWeekHeader(compact = true)
+                }
+                CalendarGrid(month)
+            }
         }
-        ScheduleLegend()
+        
+        if (!isLandscape) {
+            ScheduleLegend()
+        }
     }
 }
 
@@ -100,6 +118,7 @@ fun LegendItem(color: Color, label: String, border: Boolean = false) {
 @Composable
 fun CalendarHeader(
     currentMonth: YearMonth,
+    compact: Boolean = false,
     onTodayClick: () -> Unit
 ) {
     Surface(
@@ -109,7 +128,7 @@ fun CalendarHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -117,18 +136,21 @@ fun CalendarHeader(
                 Icon(
                     painter = painterResource(id = R.drawable.calendar),
                     contentDescription = null,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(if (compact) 24.dp else 32.dp),
                     tint = Color.Unspecified
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            IconButton(onClick = onTodayClick) {
+            IconButton(
+                onClick = onTodayClick,
+                modifier = if (compact) Modifier.size(32.dp) else Modifier
+            ) {
                 Icon(Icons.Default.Today, contentDescription = "Today")
             }
         }
@@ -136,12 +158,12 @@ fun CalendarHeader(
 }
 
 @Composable
-fun DayOfWeekHeader() {
+fun DayOfWeekHeader(compact: Boolean = false) {
     val daysOfWeek = listOf("M", "T", "W", "T", "F", "S", "S")
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = if (compact) 2.dp else 8.dp)
     ) {
         daysOfWeek.forEach { day ->
             Text(
@@ -165,26 +187,33 @@ fun CalendarGrid(currentMonth: YearMonth) {
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .fillMaxSize()
+            .padding(vertical = 4.dp)
     ) {
         val totalDays = daysInMonth + offset
         val rows = (totalDays + 6) / 7
         
         for (row in 0 until rows) {
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
                 for (column in 0 until 7) {
                     val index = row * 7 + column
                     val dayOfMonth = index - offset + 1
                     
-                    Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         if (dayOfMonth in 1..daysInMonth) {
                             val date = remember(currentMonth, dayOfMonth) {
                                 currentMonth.atDay(dayOfMonth)
                             }
                             DayItem(date)
-                        } else {
-                            Spacer(modifier = Modifier.aspectRatio(1f))
                         }
                     }
                 }
@@ -210,28 +239,35 @@ fun DayItem(date: LocalDate) {
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
-            .aspectRatio(1f)
-            .padding(4.dp)
-            .clip(CircleShape)
-            .background(containerColor)
-            .clickable { /* Handle date click if needed */ },
+            .fillMaxSize()
+            .padding(2.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = date.dayOfMonth.toString(),
-                color = contentColor,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
-            )
-            if (isWorkDay && !isToday) {
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .background(contentColor, CircleShape)
+        val bubbleSize = minOf(maxWidth, maxHeight)
+        Box(
+            modifier = Modifier
+                .size(bubbleSize)
+                .clip(CircleShape)
+                .background(containerColor)
+                .clickable { /* Handle date click if needed */ },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = date.dayOfMonth.toString(),
+                    color = contentColor,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
                 )
+                if (isWorkDay && !isToday) {
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .background(contentColor, CircleShape)
+                    )
+                }
             }
         }
     }
