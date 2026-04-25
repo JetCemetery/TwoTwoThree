@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
@@ -24,10 +25,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -275,35 +278,64 @@ fun DayItem(
     onLongClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier
-            .padding(2.dp)
-            .then(if (isLandscape) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxSize(0.9f))
-            .aspectRatio(1f)
-            .graphicsLayer { 
-                clip = true
-                shape = if (dayData.isToday) RectangleShape else CircleShape
-            }
-            .background(dayData.containerColor)
-            .combinedClickable(
-                onClick = { },
-                onLongClick = onLongClick
-            ),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = dayData.date.dayOfMonth.toString(),
-                color = dayData.contentColor,
-                style = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
-                fontWeight = if (dayData.isToday || dayData.isSwitchDate) FontWeight.Bold else FontWeight.Normal
-            )
-            if (dayData.isWorkDay) {
-                Box(
-                    modifier = Modifier
-                        .size(if (isLandscape) 2.dp else 4.dp)
-                        .background(dayData.contentColor, CircleShape)
+        // Background Circle (The "Cell" body)
+        Box(
+            modifier = Modifier
+                .padding(2.dp)
+                .then(if (isLandscape) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxSize(0.9f))
+                .aspectRatio(1f)
+                .graphicsLayer { 
+                    clip = true
+                    shape = CircleShape
+                }
+                .background(dayData.containerColor)
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = onLongClick
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val baseStyle = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
+                Text(
+                    text = dayData.date.dayOfMonth.toString(),
+                    color = dayData.contentColor,
+                    style = if (dayData.isSwitchDate) {
+                        baseStyle.copy(
+                            fontSize = (baseStyle.fontSize.value + 1).sp,
+                            fontWeight = FontWeight.Bold,
+                            fontStyle = FontStyle.Italic
+                        )
+                    } else {
+                        baseStyle.copy(
+                            fontWeight = if (dayData.isToday) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 )
+                if (dayData.isWorkDay) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 1.dp)
+                            .size(if (isLandscape) 2.dp else 4.dp)
+                            .background(dayData.contentColor, CircleShape)
+                    )
+                }
             }
+        }
+
+        // Strong Green Bar at the absolute bottom of the date cell
+        if (dayData.isToday) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 2.dp)
+                    .fillMaxWidth(0.7f)
+                    .height(if (isLandscape) 3.dp else 4.dp)
+                    .background(Color(0xFF2E7D32), RoundedCornerShape(2.dp))
+            )
         }
     }
 }
