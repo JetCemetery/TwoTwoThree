@@ -89,23 +89,25 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             }
         }
         
-        if (!isLandscape) {
-            ScheduleLegend(workDayLabel, offDayLabel)
-        }
+        ScheduleLegend(
+            workDayLabel = workDayLabel, 
+            offDayLabel = offDayLabel, 
+            compact = isLandscape
+        )
     }
 }
 
 @Composable
-fun ScheduleLegend(workDayLabel: String, offDayLabel: String) {
+fun ScheduleLegend(workDayLabel: String, offDayLabel: String, compact: Boolean = false) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(if (compact) 4.dp else 16.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         LegendItem(color = MaterialTheme.colorScheme.primaryContainer, label = workDayLabel)
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(if (compact) 12.dp else 24.dp))
         LegendItem(color = Color.Transparent, label = offDayLabel, border = true)
     }
 }

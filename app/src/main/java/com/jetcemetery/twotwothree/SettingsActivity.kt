@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SettingsActivity : ComponentActivity() {
@@ -56,18 +57,14 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     
-    // Initial values from DataStore
-    val savedWorkDayLabel by settingsManager.workDayLabel.collectAsState(initial = "Work Day")
-    val savedOffDayLabel by settingsManager.offDayLabel.collectAsState(initial = "Off Day")
-
     // Local state to prevent lag and cursor jumping
     var onDayText by remember { mutableStateOf("") }
     var offDayText by remember { mutableStateOf("") }
 
-    // Initialize local state when DataStore emits for the first time
-    LaunchedEffect(savedWorkDayLabel, savedOffDayLabel) {
-        if (onDayText.isEmpty()) onDayText = savedWorkDayLabel
-        if (offDayText.isEmpty()) offDayText = savedOffDayLabel
+    // Initialize local state with current values from DataStore once
+    LaunchedEffect(Unit) {
+        onDayText = settingsManager.workDayLabel.first()
+        offDayText = settingsManager.offDayLabel.first()
     }
 
     Column(
