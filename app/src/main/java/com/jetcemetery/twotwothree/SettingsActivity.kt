@@ -5,12 +5,21 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
@@ -57,6 +66,7 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
     
     // Initial values from DataStore
     val currentScheduleType by settingsManager.scheduleType.collectAsState(initial = "2-2-3")
@@ -64,6 +74,9 @@ fun SettingsScreen(
     // Local state to prevent lag and cursor jumping
     var onDayText by remember { mutableStateOf("") }
     var offDayText by remember { mutableStateOf("") }
+    var onDayColorHex by remember { mutableStateOf("#E3F2FD") }
+    var offDayColorHex by remember { mutableStateOf("#F5F5F5") }
+    
     var showAboutDialog by remember { mutableStateOf(false) }
     var showScheduleWarning by remember { mutableStateOf<String?>(null) }
 
@@ -71,6 +84,8 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         onDayText = settingsManager.workDayLabel.first()
         offDayText = settingsManager.offDayLabel.first()
+        onDayColorHex = settingsManager.onDayColor.first()
+        offDayColorHex = settingsManager.offDayColor.first()
     }
 
     if (showScheduleWarning != null) {
@@ -117,9 +132,12 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Text("Labels", style = MaterialTheme.typography.titleMedium)
+        
         OutlinedTextField(
             value = onDayText,
             onValueChange = { onDayText = it },
@@ -134,6 +152,22 @@ fun SettingsScreen(
             label = { Text("Off Day") },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("e.g. Off Day or 🏠") }
+        )
+
+        HorizontalDivider()
+
+        Text("Colors", style = MaterialTheme.typography.titleMedium)
+        
+        ColorDropdown(
+            label = "On Day Color",
+            selectedHex = onDayColorHex,
+            onColorSelected = { onDayColorHex = it }
+        )
+
+        ColorDropdown(
+            label = "Off Day Color",
+            selectedHex = offDayColorHex,
+            onColorSelected = { offDayColorHex = it }
         )
 
         HorizontalDivider()
@@ -165,6 +199,8 @@ fun SettingsScreen(
                 scope.launch {
                     settingsManager.updateWorkDayLabel(onDayText)
                     settingsManager.updateOffDayLabel(offDayText)
+                    settingsManager.updateOnDayColor(onDayColorHex)
+                    settingsManager.updateOffDayColor(offDayColorHex)
                     Toast.makeText(context, "Settings Saved", Toast.LENGTH_SHORT).show()
                     onSaveComplete()
                 }
@@ -186,5 +222,72 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+fun ColorDropdown(
+    label: String,
+    selectedHex: String,
+    onColorSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(ColorPalette.fromHex(selectedHex))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        ColorPalette.options.find { it.hex == selectedHex }?.name ?: "Custom",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 400.dp)
+            ) {
+                ColorPalette.options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(ColorPalette.fromHex(option.hex))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(option.name)
+                            }
+                        },
+                        onClick = {
+                            onColorSelected(option.hex)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }

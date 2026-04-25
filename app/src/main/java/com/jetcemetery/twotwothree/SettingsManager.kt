@@ -18,6 +18,8 @@ class SettingsManager(private val context: Context) {
         val OFF_DAY_LABEL = stringPreferencesKey("off_day_label")
         val SWITCH_DATES = stringSetPreferencesKey("switch_dates")
         val SCHEDULE_TYPE = stringPreferencesKey("schedule_type")
+        val ON_DAY_COLOR = stringPreferencesKey("on_day_color")
+        val OFF_DAY_COLOR = stringPreferencesKey("off_day_color")
     }
 
     val workDayLabel: Flow<String> = context.dataStore.data.map { preferences ->
@@ -36,6 +38,14 @@ class SettingsManager(private val context: Context) {
         preferences[SCHEDULE_TYPE] ?: "2-2-3"
     }
 
+    val onDayColor: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[ON_DAY_COLOR] ?: "#9E9E9E" // Default Grey
+    }
+
+    val offDayColor: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[OFF_DAY_COLOR] ?: "#795548" // Default Brown
+    }
+
     suspend fun updateWorkDayLabel(label: String) {
         context.dataStore.edit { preferences ->
             preferences[WORK_DAY_LABEL] = label
@@ -52,6 +62,18 @@ class SettingsManager(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[SCHEDULE_TYPE] = type
             preferences.remove(SWITCH_DATES) // Clear history as requested
+        }
+    }
+
+    suspend fun updateOnDayColor(colorHex: String) {
+        context.dataStore.edit { preferences ->
+            preferences[ON_DAY_COLOR] = colorHex
+        }
+    }
+
+    suspend fun updateOffDayColor(colorHex: String) {
+        context.dataStore.edit { preferences ->
+            preferences[OFF_DAY_COLOR] = colorHex
         }
     }
 

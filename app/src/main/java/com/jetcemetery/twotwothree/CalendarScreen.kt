@@ -59,6 +59,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
     val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
     val scheduleType by settingsManager?.scheduleType?.collectAsState(initial = "2-2-3") ?: remember { mutableStateOf("2-2-3") }
+    val onDayColorHex by settingsManager?.onDayColor?.collectAsState(initial = "#E3F2FD") ?: remember { mutableStateOf("#E3F2FD") }
+    val offDayColorHex by settingsManager?.offDayColor?.collectAsState(initial = "#F5F5F5") ?: remember { mutableStateOf("#F5F5F5") }
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     var showMonthPicker by remember { mutableStateOf(false) }
@@ -89,6 +91,9 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         val firstOfMonth = month.atDay(1)
         val gridOffset = firstOfMonth.dayOfWeek.value - 1
         
+        val onDayColor = ColorPalette.fromHex(onDayColorHex)
+        val offDayColor = ColorPalette.fromHex(offDayColorHex)
+
         return (0 until 42).map { i ->
             val date = firstOfMonth.plusDays((i - gridOffset).toLong())
             val isWorkDay = ScheduleUtils.isWorkDaySwitchedOptimized(date, sortedSwitches, scheduleType)
@@ -97,14 +102,14 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             
             val containerColor = when {
                 isToday -> colorScheme.primary
-                isWorkDay -> colorScheme.primaryContainer.copy(alpha = 0.7f)
-                else -> Color.Transparent
+                isWorkDay -> onDayColor
+                else -> offDayColor
             }
             val contentColor = when {
                 isToday -> colorScheme.onPrimary
                 isSwitchDate -> Color(0xFF2E7D32)
-                isWorkDay -> colorScheme.onPrimaryContainer
-                else -> colorScheme.onSurface
+                isWorkDay -> ColorPalette.getContrastColor(onDayColor)
+                else -> ColorPalette.getContrastColor(offDayColor)
             }
 
             DayViewState(
@@ -120,7 +125,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     }
 
     // Background Worker: Proactive calculation for non-visible months
-    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme) {
+    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex) {
         withContext(Dispatchers.Default) {
             val currentCenter = pagerState.currentPage
             for (offset in -3..3) {
@@ -134,8 +139,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         }
     }
 
-    // Reset cache on major logic changes
-    LaunchedEffect(switchDates, scheduleType) {
+    // Reset cache on major logic or style changes
+    LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex) {
         monthCache.clear()
     }
 
@@ -198,14 +203,12 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
             
-            // ELIMINATE BLANKING: 
+            // ELIMINATE BLANKING & FIX CRASH: 
             // If cache isn't ready for the visible page, calculate it synchronously.
-            // Because we use an optimized binary search, this happens in < 2ms,
-            // well within the 16ms frame budget, avoiding any blank frames.
-            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, colorScheme) {
-                val data = calculateMonthData(month)
-                monthCache[month] = data
-                data
+            // We DO NOT update the cache here because state changes during composition
+            // are illegal and cause crashes. The cache is updated by the LaunchedEffect.
+            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, colorScheme) {
+                calculateMonthData(month)
             }
 
             Column {
@@ -214,6 +217,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 }
                 CalendarGrid(
                     daysData = daysData,
+                    isLandscape = isLandscape,
                     onDayLongClick = { showSwitchDialog = it }
                 )
             }
@@ -222,6 +226,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         ScheduleLegend(
             workDayLabel = workDayLabel, 
             offDayLabel = offDayLabel, 
+            onDayColorHex = onDayColorHex,
+            offDayColorHex = offDayColorHex,
             compact = isLandscape
         )
     }
@@ -230,6 +236,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
 @Composable
 fun CalendarGrid(
     daysData: List<DayViewState>,
+    isLandscape: Boolean,
     onDayLongClick: (LocalDate) -> Unit
 ) {
     Column(
@@ -254,6 +261,7 @@ fun CalendarGrid(
                         if (dayData.isCurrentMonth) {
                             DayItem(
                                 dayData = dayData,
+                                isLandscape = isLandscape,
                                 onLongClick = { onDayLongClick(dayData.date) }
                             )
                         }
@@ -268,11 +276,13 @@ fun CalendarGrid(
 @Composable
 fun DayItem(
     dayData: DayViewState,
+    isLandscape: Boolean,
     onLongClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .fillMaxSize(0.9f)
+            .padding(2.dp)
+            .then(if (isLandscape) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxSize(0.9f))
             .aspectRatio(1f)
             .graphicsLayer { 
                 clip = true
@@ -289,13 +299,13 @@ fun DayItem(
             Text(
                 text = dayData.date.dayOfMonth.toString(),
                 color = dayData.contentColor,
-                style = MaterialTheme.typography.bodyLarge,
+                style = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
                 fontWeight = if (dayData.isToday || dayData.isSwitchDate) FontWeight.Bold else FontWeight.Normal
             )
             if (dayData.isWorkDay && !dayData.isToday) {
                 Box(
                     modifier = Modifier
-                        .size(4.dp)
+                        .size(if (isLandscape) 2.dp else 4.dp)
                         .background(dayData.contentColor, CircleShape)
                 )
             }
@@ -304,7 +314,13 @@ fun DayItem(
 }
 
 @Composable
-fun ScheduleLegend(workDayLabel: String, offDayLabel: String, compact: Boolean = false) {
+fun ScheduleLegend(
+    workDayLabel: String, 
+    offDayLabel: String, 
+    onDayColorHex: String,
+    offDayColorHex: String,
+    compact: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -312,9 +328,9 @@ fun ScheduleLegend(workDayLabel: String, offDayLabel: String, compact: Boolean =
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LegendItem(color = MaterialTheme.colorScheme.primaryContainer, label = workDayLabel)
+        LegendItem(color = ColorPalette.fromHex(onDayColorHex), label = workDayLabel)
         Spacer(modifier = Modifier.width(if (compact) 12.dp else 24.dp))
-        LegendItem(color = Color.Transparent, label = offDayLabel, border = true)
+        LegendItem(color = ColorPalette.fromHex(offDayColorHex), label = offDayLabel, border = true)
     }
 }
 
