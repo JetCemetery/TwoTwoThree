@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.*
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -41,6 +43,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
+    var showMonthPicker by remember { mutableStateOf(false) }
     
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -80,6 +83,20 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         )
     }
 
+    if (showMonthPicker) {
+        YearMonthPickerDialog(
+            initialMonth = currentMonth,
+            onDismiss = { showMonthPicker = false },
+            onConfirm = { selectedMonth ->
+                scope.launch {
+                    val monthsDiff = ChronoUnit.MONTHS.between(YearMonth.now(), selectedMonth).toInt()
+                    pagerState.scrollToPage(initialPage + monthsDiff)
+                }
+                showMonthPicker = false
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -95,7 +112,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             },
             onSettingsClick = {
                 context.startActivity(Intent(context, SettingsActivity::class.java))
-            }
+            },
+            onMonthClick = { showMonthPicker = true }
         )
         
         if (!isLandscape) {
@@ -165,7 +183,8 @@ fun CalendarHeader(
     currentMonth: YearMonth,
     compact: Boolean = false,
     onTodayClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onMonthClick: () -> Unit
 ) {
     Surface(
         tonalElevation = 2.dp,
@@ -178,7 +197,10 @@ fun CalendarHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onMonthClick() }
+            ) {
                 Icon(
                     painter = painterResource(id = R.drawable.calendar),
                     contentDescription = null,
@@ -343,6 +365,101 @@ fun DayItem(
             }
         }
     }
+}
+
+@Composable
+fun YearMonthPickerDialog(
+    initialMonth: YearMonth,
+    onDismiss: () -> Unit,
+    onConfirm: (YearMonth) -> Unit
+) {
+    var selectedMonth by remember { mutableStateOf(initialMonth.monthValue) }
+    var selectedYear by remember { mutableStateOf(initialMonth.year) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Month and Year") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Simple Year Selector
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Year", style = MaterialTheme.typography.labelMedium)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            var expanded by remember { mutableStateOf(false) }
+                            OutlinedButton(
+                                onClick = { expanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Text(selectedYear.toString(), style = MaterialTheme.typography.bodyMedium)
+                            }
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                // Range of years: Current year +/- 50
+                                val currentYear = YearMonth.now().year
+                                (currentYear - 50..currentYear + 50).forEach { year ->
+                                    DropdownMenuItem(
+                                        text = { Text(year.toString(), style = MaterialTheme.typography.bodyMedium) },
+                                        onClick = {
+                                            selectedYear = year
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Simple Month Selector
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Month", style = MaterialTheme.typography.labelMedium)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            var expanded by remember { mutableStateOf(false) }
+                            OutlinedButton(
+                                onClick = { expanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Text(
+                                    java.time.Month.of(selectedMonth).getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                (1..12).forEach { month ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                java.time.Month.of(month).getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedMonth = month
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(YearMonth.of(selectedYear, selectedMonth)) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Preview(showBackground = true)

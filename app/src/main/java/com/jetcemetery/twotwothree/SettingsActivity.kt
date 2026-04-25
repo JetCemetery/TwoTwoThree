@@ -60,11 +60,30 @@ fun SettingsScreen(
     // Local state to prevent lag and cursor jumping
     var onDayText by remember { mutableStateOf("") }
     var offDayText by remember { mutableStateOf("") }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     // Initialize local state with current values from DataStore once
     LaunchedEffect(Unit) {
         onDayText = settingsManager.workDayLabel.first()
         offDayText = settingsManager.offDayLabel.first()
+    }
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("About") },
+            text = {
+                Text(
+                    "Simple ad free, ad tracking free, no data collected, app that helps you track on and off days. Lets you swap days and unswap days if needed. \n\n" +
+                            "Life is hard already, let this ease some burden off."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     Column(
@@ -101,6 +120,13 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Save Changes")
+        }
+
+        OutlinedButton(
+            onClick = { showAboutDialog = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("About")
         }
 
         Text(
