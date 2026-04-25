@@ -91,8 +91,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         val today = LocalDate.now()
         val firstOfMonth = month.atDay(1)
         val gridOffset = firstOfMonth.dayOfWeek.value - 1
-        
-        val onDayColor = ColorPalette.fromHex(onDayColorHex)
+            val onDayColor = ColorPalette.fromHex(onDayColorHex)
         val offDayColor = ColorPalette.fromHex(offDayColorHex)
 
         return (0 until 42).map { i ->
@@ -101,13 +100,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             val isToday = date == today
             val isSwitchDate = switchDates.contains(date)
             
-            val containerColor = when {
-                isToday -> colorScheme.primary
-                isWorkDay -> onDayColor
-                else -> offDayColor
-            }
+            val containerColor = if (isWorkDay) onDayColor else offDayColor
             val contentColor = when {
-                isToday -> colorScheme.onPrimary
                 isSwitchDate -> Color(0xFF2E7D32)
                 isWorkDay -> ColorPalette.getContrastColor(onDayColor)
                 else -> ColorPalette.getContrastColor(offDayColor)
@@ -303,7 +297,7 @@ fun DayItem(
                 style = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
                 fontWeight = if (dayData.isToday || dayData.isSwitchDate) FontWeight.Bold else FontWeight.Normal
             )
-            if (dayData.isWorkDay && !dayData.isToday) {
+            if (dayData.isWorkDay) {
                 Box(
                     modifier = Modifier
                         .size(if (isLandscape) 2.dp else 4.dp)
