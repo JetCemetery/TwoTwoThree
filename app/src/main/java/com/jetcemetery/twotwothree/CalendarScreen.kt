@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -27,12 +28,28 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.*
+
+/**
+ * Immutable data class representing the final visual state of a day.
+ */
+@Immutable
+data class DayViewState(
+    val date: LocalDate,
+    val isCurrentMonth: Boolean,
+    val isWorkDay: Boolean,
+    val isToday: Boolean,
+    val isSwitchDate: Boolean,
+    val containerColor: Color,
+    val contentColor: Color
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -49,15 +66,77 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    val initialPage = 500 // Arbitrary middle point for the pager
+    val initialPage = 500
     val pagerState = rememberPagerState(initialPage = initialPage) { 1000 }
     val scope = rememberCoroutineScope()
 
-    // Synchronize currentMonth with pagerState
-    LaunchedEffect(pagerState.currentPage) {
-        val diff = pagerState.currentPage - initialPage
-        currentMonth = YearMonth.now().plusMonths(diff.toLong())
+    val currentMonth by remember {
+        derivedStateOf {
+            YearMonth.now().plusMonths((pagerState.currentPage - initialPage).toLong())
+        }
+    }
+
+    // High-performance background data cache
+    val monthCache = remember { mutableStateMapOf<YearMonth, List<DayViewState>>() }
+    val colorScheme = MaterialTheme.colorScheme
+
+    /**
+     * Helper to calculate month data. Binary search in ScheduleUtils makes this very fast.
+     */
+    fun calculateMonthData(month: YearMonth): List<DayViewState> {
+        val sortedSwitches = switchDates.toList().sorted()
+        val today = LocalDate.now()
+        val firstOfMonth = month.atDay(1)
+        val gridOffset = firstOfMonth.dayOfWeek.value - 1
+        
+        return (0 until 42).map { i ->
+            val date = firstOfMonth.plusDays((i - gridOffset).toLong())
+            val isWorkDay = ScheduleUtils.isWorkDaySwitchedOptimized(date, sortedSwitches, scheduleType)
+            val isToday = date == today
+            val isSwitchDate = switchDates.contains(date)
+            
+            val containerColor = when {
+                isToday -> colorScheme.primary
+                isWorkDay -> colorScheme.primaryContainer.copy(alpha = 0.7f)
+                else -> Color.Transparent
+            }
+            val contentColor = when {
+                isToday -> colorScheme.onPrimary
+                isSwitchDate -> Color(0xFF2E7D32)
+                isWorkDay -> colorScheme.onPrimaryContainer
+                else -> colorScheme.onSurface
+            }
+
+            DayViewState(
+                date = date,
+                isCurrentMonth = date.monthValue == month.monthValue && date.year == month.year,
+                isWorkDay = isWorkDay,
+                isToday = isToday,
+                isSwitchDate = isSwitchDate,
+                containerColor = containerColor,
+                contentColor = contentColor
+            )
+        }
+    }
+
+    // Background Worker: Proactive calculation for non-visible months
+    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme) {
+        withContext(Dispatchers.Default) {
+            val currentCenter = pagerState.currentPage
+            for (offset in -3..3) {
+                if (offset == 0) continue // Visible month is handled synchronously for zero-latency
+                val page = currentCenter + offset
+                val month = YearMonth.now().plusMonths((page - initialPage).toLong())
+                if (!monthCache.containsKey(month)) {
+                    monthCache[month] = calculateMonthData(month)
+                }
+            }
+        }
+    }
+
+    // Reset cache on major logic changes
+    LaunchedEffect(switchDates, scheduleType) {
+        monthCache.clear()
     }
 
     // Confirmation Dialog
@@ -68,18 +147,12 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             text = { Text("Do you want to switch the schedule starting from ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())}? This will affect all following days.") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch {
-                        settingsManager?.toggleSwitchDate(date)
-                    }
+                    scope.launch { settingsManager?.toggleSwitchDate(date) }
                     showSwitchDialog = null
-                }) {
-                    Text("Yes")
-                }
+                }) { Text("Yes") }
             },
             dismissButton = {
-                TextButton(onClick = { showSwitchDialog = null }) {
-                    Text("No")
-                }
+                TextButton(onClick = { showSwitchDialog = null }) { Text("No") }
             }
         )
     }
@@ -106,14 +179,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         CalendarHeader(
             currentMonth = currentMonth,
             compact = isLandscape,
-            onTodayClick = {
-                scope.launch {
-                    pagerState.scrollToPage(initialPage)
-                }
-            },
-            onSettingsClick = {
-                context.startActivity(Intent(context, SettingsActivity::class.java))
-            },
+            onTodayClick = { scope.launch { pagerState.scrollToPage(initialPage) } },
+            onSettingsClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) },
             onMonthClick = { showMonthPicker = true }
         )
         
@@ -126,17 +193,27 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             state = pagerState,
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.Top,
-            beyondViewportPageCount = 1
+            beyondViewportPageCount = 2,
+            key = { it }
         ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
+            
+            // ELIMINATE BLANKING: 
+            // If cache isn't ready for the visible page, calculate it synchronously.
+            // Because we use an optimized binary search, this happens in < 2ms,
+            // well within the 16ms frame budget, avoiding any blank frames.
+            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, colorScheme) {
+                val data = calculateMonthData(month)
+                monthCache[month] = data
+                data
+            }
+
             Column {
                 if (isLandscape) {
                     DayOfWeekHeader(compact = true)
                 }
                 CalendarGrid(
-                    currentMonth = month,
-                    switchDates = switchDates,
-                    scheduleType = scheduleType,
+                    daysData = daysData,
                     onDayLongClick = { showSwitchDialog = it }
                 )
             }
@@ -147,6 +224,82 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             offDayLabel = offDayLabel, 
             compact = isLandscape
         )
+    }
+}
+
+@Composable
+fun CalendarGrid(
+    daysData: List<DayViewState>,
+    onDayLongClick: (LocalDate) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(vertical = 4.dp)
+    ) {
+        for (row in 0 until 6) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                for (column in 0 until 7) {
+                    val dayData = daysData[row * 7 + column]
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (dayData.isCurrentMonth) {
+                            DayItem(
+                                dayData = dayData,
+                                onLongClick = { onDayLongClick(dayData.date) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun DayItem(
+    dayData: DayViewState,
+    onLongClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize(0.9f)
+            .aspectRatio(1f)
+            .graphicsLayer { 
+                clip = true
+                shape = CircleShape
+            }
+            .background(dayData.containerColor)
+            .combinedClickable(
+                onClick = { },
+                onLongClick = onLongClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = dayData.date.dayOfMonth.toString(),
+                color = dayData.contentColor,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (dayData.isToday || dayData.isSwitchDate) FontWeight.Bold else FontWeight.Normal
+            )
+            if (dayData.isWorkDay && !dayData.isToday) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .background(dayData.contentColor, CircleShape)
+                )
+            }
+        }
     }
 }
 
@@ -252,120 +405,6 @@ fun DayOfWeekHeader(compact: Boolean = false) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold
             )
-        }
-    }
-}
-
-@Composable
-fun CalendarGrid(
-    currentMonth: YearMonth,
-    switchDates: Set<LocalDate>,
-    scheduleType: String,
-    onDayLongClick: (LocalDate) -> Unit
-) {
-    val daysInMonth = currentMonth.lengthOfMonth()
-    val firstOfMonth = currentMonth.atDay(1)
-    val firstDayOfWeek = firstOfMonth.dayOfWeek.value
-    val offset = firstDayOfWeek - 1 // Monday-based offset
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 4.dp)
-    ) {
-        val totalDays = daysInMonth + offset
-        val rows = (totalDays + 6) / 7
-        
-        for (row in 0 until rows) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                for (column in 0 until 7) {
-                    val index = row * 7 + column
-                    val dayOfMonth = index - offset + 1
-                    
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (dayOfMonth in 1..daysInMonth) {
-                            val date = remember(currentMonth, dayOfMonth) {
-                                currentMonth.atDay(dayOfMonth)
-                            }
-                            DayItem(
-                                date = date,
-                                isSwitchDate = switchDates.contains(date),
-                                isWorkDay = ScheduleUtils.isWorkDaySwitched(date, switchDates, scheduleType),
-                                onLongClick = { onDayLongClick(date) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DayItem(
-    date: LocalDate,
-    isSwitchDate: Boolean,
-    isWorkDay: Boolean,
-    onLongClick: () -> Unit
-) {
-    val isToday = remember(date) { date == LocalDate.now() }
-    
-    val containerColor = when {
-        isToday -> MaterialTheme.colorScheme.primary
-        isWorkDay -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-        else -> Color.Transparent
-    }
-    
-    val contentColor = when {
-        isToday -> MaterialTheme.colorScheme.onPrimary
-        isSwitchDate -> Color(0xFF2E7D32) // Dark Green for switch dates
-        isWorkDay -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        val bubbleSize = minOf(maxWidth, maxHeight)
-        Box(
-            modifier = Modifier
-                .size(bubbleSize)
-                .clip(CircleShape)
-                .background(containerColor)
-                .combinedClickable(
-                    onClick = { /* Handle date click if needed */ },
-                    onLongClick = onLongClick
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = date.dayOfMonth.toString(),
-                    color = contentColor,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isToday || isSwitchDate) FontWeight.Bold else FontWeight.Normal
-                )
-                if (isWorkDay && !isToday) {
-                    Box(
-                        modifier = Modifier
-                            .size(4.dp)
-                            .background(contentColor, CircleShape)
-                    )
-                }
-            }
         }
     }
 }

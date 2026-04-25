@@ -7,9 +7,11 @@ object ScheduleUtils {
     // Default anchor date: a Monday that starts "Week A"
     val defaultAnchorDate: LocalDate = LocalDate.of(2024, 12, 30)
 
+    /**
+     * Core logic to determine if a date is a work day based on the base schedule.
+     */
     fun isWorkDay(date: LocalDate, anchorDate: LocalDate = defaultAnchorDate, scheduleType: String = "2-2-3"): Boolean {
         val daysBetween = ChronoUnit.DAYS.between(anchorDate, date)
-        // Adjust for negative differences if date is before anchorDate
         val normalizedDays = if (daysBetween >= 0) {
             daysBetween % 14
         } else {
@@ -40,9 +42,34 @@ object ScheduleUtils {
         }
     }
 
-    fun isWorkDaySwitched(date: LocalDate, switchDates: Set<LocalDate>, scheduleType: String = "2-2-3"): Boolean {
+    /**
+     * Optimized switch logic.
+     * @param sortedSwitches Must be pre-sorted for performance.
+     */
+    fun isWorkDaySwitchedOptimized(date: LocalDate, sortedSwitches: List<LocalDate>, scheduleType: String = "2-2-3"): Boolean {
         val original = isWorkDay(date, scheduleType = scheduleType)
-        val switchesBefore = switchDates.count { !it.isAfter(date) }
-        return if (switchesBefore % 2 == 0) original else !original
+        
+        // Use binary search to find how many switches occur before or on this date
+        var low = 0
+        var high = sortedSwitches.size - 1
+        var count = 0
+        
+        while (low <= high) {
+            val mid = (low + high) / 2
+            if (!sortedSwitches[mid].isAfter(date)) {
+                count = mid + 1
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        
+        return if (count % 2 == 0) original else !original
+    }
+
+    // Deprecated for performance, keeping for compatibility if needed elsewhere
+    fun isWorkDaySwitched(date: LocalDate, switchDates: Set<LocalDate>, scheduleType: String = "2-2-3"): Boolean {
+        val sorted = switchDates.toList().sorted()
+        return isWorkDaySwitchedOptimized(date, sorted, scheduleType)
     }
 }
