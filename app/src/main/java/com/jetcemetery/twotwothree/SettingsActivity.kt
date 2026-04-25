@@ -48,6 +48,7 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier, 
@@ -57,15 +58,42 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     
+    // Initial values from DataStore
+    val currentScheduleType by settingsManager.scheduleType.collectAsState(initial = "2-2-3")
+
     // Local state to prevent lag and cursor jumping
     var onDayText by remember { mutableStateOf("") }
     var offDayText by remember { mutableStateOf("") }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showScheduleWarning by remember { mutableStateOf<String?>(null) }
 
     // Initialize local state with current values from DataStore once
     LaunchedEffect(Unit) {
         onDayText = settingsManager.workDayLabel.first()
         offDayText = settingsManager.offDayLabel.first()
+    }
+
+    if (showScheduleWarning != null) {
+        AlertDialog(
+            onDismissRequest = { showScheduleWarning = null },
+            title = { Text("Warning: Change Schedule?") },
+            text = { Text("Switching schedule types will permanently delete all your day swap history. This cannot be undone. Do you want to continue?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        showScheduleWarning?.let { settingsManager.updateScheduleType(it) }
+                        showScheduleWarning = null
+                    }
+                }) {
+                    Text("Yes, Switch and Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showScheduleWarning = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showAboutDialog) {
@@ -107,6 +135,30 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("e.g. Off Day or 🏠") }
         )
+
+        HorizontalDivider()
+
+        Text("Select Schedule Type", style = MaterialTheme.typography.titleMedium)
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            FilterChip(
+                selected = currentScheduleType == "2-2-3",
+                onClick = { if (currentScheduleType != "2-2-3") showScheduleWarning = "2-2-3" },
+                label = { Text("2-2-3 Schedule") },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = currentScheduleType == "5-2",
+                onClick = { if (currentScheduleType != "5-2") showScheduleWarning = "5-2" },
+                label = { Text("5-2 Schedule") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        HorizontalDivider()
         
         Button(
             onClick = {

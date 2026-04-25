@@ -17,6 +17,7 @@ class SettingsManager(private val context: Context) {
         val WORK_DAY_LABEL = stringPreferencesKey("work_day_label")
         val OFF_DAY_LABEL = stringPreferencesKey("off_day_label")
         val SWITCH_DATES = stringSetPreferencesKey("switch_dates")
+        val SCHEDULE_TYPE = stringPreferencesKey("schedule_type")
     }
 
     val workDayLabel: Flow<String> = context.dataStore.data.map { preferences ->
@@ -31,6 +32,10 @@ class SettingsManager(private val context: Context) {
         preferences[SWITCH_DATES]?.map { LocalDate.parse(it) }?.toSet() ?: emptySet()
     }
 
+    val scheduleType: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[SCHEDULE_TYPE] ?: "2-2-3"
+    }
+
     suspend fun updateWorkDayLabel(label: String) {
         context.dataStore.edit { preferences ->
             preferences[WORK_DAY_LABEL] = label
@@ -40,6 +45,13 @@ class SettingsManager(private val context: Context) {
     suspend fun updateOffDayLabel(label: String) {
         context.dataStore.edit { preferences ->
             preferences[OFF_DAY_LABEL] = label
+        }
+    }
+
+    suspend fun updateScheduleType(type: String) {
+        context.dataStore.edit { preferences ->
+            preferences[SCHEDULE_TYPE] = type
+            preferences.remove(SWITCH_DATES) // Clear history as requested
         }
     }
 

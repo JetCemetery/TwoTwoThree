@@ -41,6 +41,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val workDayLabel by settingsManager?.workDayLabel?.collectAsState(initial = "Work Day") ?: remember { mutableStateOf("Work Day") }
     val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
     val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
+    val scheduleType by settingsManager?.scheduleType?.collectAsState(initial = "2-2-3") ?: remember { mutableStateOf("2-2-3") }
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     var showMonthPicker by remember { mutableStateOf(false) }
@@ -135,6 +136,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 CalendarGrid(
                     currentMonth = month,
                     switchDates = switchDates,
+                    scheduleType = scheduleType,
                     onDayLongClick = { showSwitchDialog = it }
                 )
             }
@@ -258,6 +260,7 @@ fun DayOfWeekHeader(compact: Boolean = false) {
 fun CalendarGrid(
     currentMonth: YearMonth,
     switchDates: Set<LocalDate>,
+    scheduleType: String,
     onDayLongClick: (LocalDate) -> Unit
 ) {
     val daysInMonth = currentMonth.lengthOfMonth()
@@ -296,7 +299,7 @@ fun CalendarGrid(
                             DayItem(
                                 date = date,
                                 isSwitchDate = switchDates.contains(date),
-                                isWorkDay = ScheduleUtils.isWorkDaySwitched(date, switchDates),
+                                isWorkDay = ScheduleUtils.isWorkDaySwitched(date, switchDates, scheduleType),
                                 onLongClick = { onDayLongClick(date) }
                             )
                         }
