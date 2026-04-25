@@ -2,8 +2,9 @@ package com.jetcemetery.twotwothree
 
 import android.content.Intent
 import android.content.res.Configuration
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -31,11 +32,15 @@ import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.*
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManager? = null) {
     val context = LocalContext.current
     val workDayLabel by settingsManager?.workDayLabel?.collectAsState(initial = "Work Day") ?: remember { mutableStateOf("Work Day") }
     val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
+    val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
+    
+    var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -49,6 +54,30 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     LaunchedEffect(pagerState.currentPage) {
         val diff = pagerState.currentPage - initialPage
         currentMonth = YearMonth.now().plusMonths(diff.toLong())
+    }
+
+    // Confirmation Dialog
+    showSwitchDialog?.let { date ->
+        AlertDialog(
+            onDismissRequest = { showSwitchDialog = null },
+            title = { Text("Switch Schedule?") },
+            text = { Text("Do you want to switch the schedule starting from ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())}? This will affect all following days.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        settingsManager?.toggleSwitchDate(date)
+                    }
+                    showSwitchDialog = null
+                }) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSwitchDialog = null }) {
+                    Text("No")
+                }
+            }
+        )
     }
 
     Column(
@@ -85,7 +114,11 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 if (isLandscape) {
                     DayOfWeekHeader(compact = true)
                 }
-                CalendarGrid(month)
+                CalendarGrid(
+                    currentMonth = month,
+                    switchDates = switchDates,
+                    onDayLongClick = { showSwitchDialog = it }
+                )
             }
         }
         
@@ -200,7 +233,11 @@ fun DayOfWeekHeader(compact: Boolean = false) {
 }
 
 @Composable
-fun CalendarGrid(currentMonth: YearMonth) {
+fun CalendarGrid(
+    currentMonth: YearMonth,
+    switchDates: Set<LocalDate>,
+    onDayLongClick: (LocalDate) -> Unit
+) {
     val daysInMonth = currentMonth.lengthOfMonth()
     val firstOfMonth = currentMonth.atDay(1)
     val firstDayOfWeek = firstOfMonth.dayOfWeek.value
@@ -234,7 +271,12 @@ fun CalendarGrid(currentMonth: YearMonth) {
                             val date = remember(currentMonth, dayOfMonth) {
                                 currentMonth.atDay(dayOfMonth)
                             }
-                            DayItem(date)
+                            DayItem(
+                                date = date,
+                                isSwitchDate = switchDates.contains(date),
+                                isWorkDay = ScheduleUtils.isWorkDaySwitched(date, switchDates),
+                                onLongClick = { onDayLongClick(date) }
+                            )
                         }
                     }
                 }
@@ -243,9 +285,14 @@ fun CalendarGrid(currentMonth: YearMonth) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DayItem(date: LocalDate) {
-    val isWorkDay = remember(date) { ScheduleUtils.isWorkDay(date) }
+fun DayItem(
+    date: LocalDate,
+    isSwitchDate: Boolean,
+    isWorkDay: Boolean,
+    onLongClick: () -> Unit
+) {
     val isToday = remember(date) { date == LocalDate.now() }
     
     val containerColor = when {
@@ -256,6 +303,7 @@ fun DayItem(date: LocalDate) {
     
     val contentColor = when {
         isToday -> MaterialTheme.colorScheme.onPrimary
+        isSwitchDate -> Color(0xFF2E7D32) // Dark Green for switch dates
         isWorkDay -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurface
     }
@@ -272,7 +320,10 @@ fun DayItem(date: LocalDate) {
                 .size(bubbleSize)
                 .clip(CircleShape)
                 .background(containerColor)
-                .clickable { /* Handle date click if needed */ },
+                .combinedClickable(
+                    onClick = { /* Handle date click if needed */ },
+                    onLongClick = onLongClick
+                ),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -280,7 +331,7 @@ fun DayItem(date: LocalDate) {
                     text = date.dayOfMonth.toString(),
                     color = contentColor,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+                    fontWeight = if (isToday || isSwitchDate) FontWeight.Bold else FontWeight.Normal
                 )
                 if (isWorkDay && !isToday) {
                     Box(

@@ -26,4 +26,10 @@ object ScheduleUtils {
             else -> false
         }
     }
+
+    fun isWorkDaySwitched(date: LocalDate, switchDates: Set<LocalDate>): Boolean {
+        val original = isWorkDay(date)
+        val switchesBefore = switchDates.count { !it.isAfter(date) }
+        return if (switchesBefore % 2 == 0) original else !original
+    }
 }
