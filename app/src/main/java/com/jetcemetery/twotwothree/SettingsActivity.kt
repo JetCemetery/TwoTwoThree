@@ -138,21 +138,49 @@ fun SettingsScreen(
     ) {
         Text("Labels", style = MaterialTheme.typography.titleMedium)
         
-        OutlinedTextField(
-            value = onDayText,
-            onValueChange = { onDayText = it },
-            label = { Text("On Day") },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("e.g. Work Day or 🏢") }
-        )
+        Column {
+            OutlinedTextField(
+                value = onDayText,
+                onValueChange = { input ->
+                    val filtered = input.replace("\n", "").take(20)
+                    onDayText = filtered
+                },
+                label = { Text("On Day") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. Work Day or 🏢") },
+                singleLine = true
+            )
+            if (onDayText.length >= 20) {
+                Text(
+                    "Maximum character limit reached",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            }
+        }
 
-        OutlinedTextField(
-            value = offDayText,
-            onValueChange = { offDayText = it },
-            label = { Text("Off Day") },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("e.g. Off Day or 🏠") }
-        )
+        Column {
+            OutlinedTextField(
+                value = offDayText,
+                onValueChange = { input ->
+                    val filtered = input.replace("\n", "").take(20)
+                    offDayText = filtered
+                },
+                label = { Text("Off Day") },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. Off Day or 🏠") },
+                singleLine = true
+            )
+            if (offDayText.length >= 20) {
+                Text(
+                    "Maximum character limit reached",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            }
+        }
 
         HorizontalDivider()
 
