@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +50,7 @@ data class DayViewState(
     val isWorkDay: Boolean,
     val isToday: Boolean,
     val isSwitchDate: Boolean,
+    val hasCalendarEvent: Boolean,
     val containerColor: Color,
     val contentColor: Color
 )
@@ -63,8 +63,10 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
     val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
     val scheduleType by settingsManager?.scheduleType?.collectAsState(initial = "2-2-3") ?: remember { mutableStateOf("2-2-3") }
-    val onDayColorHex by settingsManager?.onDayColor?.collectAsState(initial = "#E3F2FD") ?: remember { mutableStateOf("#E3F2FD") }
-    val offDayColorHex by settingsManager?.offDayColor?.collectAsState(initial = "#F5F5F5") ?: remember { mutableStateOf("#F5F5F5") }
+    val onDayColorHex by settingsManager?.onDayColor?.collectAsState(initial = "#9E9E9E") ?: remember { mutableStateOf("#9E9E9E") }
+    val offDayColorHex by settingsManager?.offDayColor?.collectAsState(initial = "#795548") ?: remember { mutableStateOf("#795548") }
+    val selectedCalendarIds by settingsManager?.selectedCalendarIds?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
+    val loadCalendarEvents = selectedCalendarIds.isNotEmpty()
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     var showMonthPicker by remember { mutableStateOf(false) }
@@ -89,12 +91,13 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     /**
      * Helper to calculate month data. Binary search in ScheduleUtils makes this very fast.
      */
-    fun calculateMonthData(month: YearMonth): List<DayViewState> {
+    fun calculateMonthData(month: YearMonth, calendarEvents: Set<LocalDate>): List<DayViewState> {
         val sortedSwitches = switchDates.toList().sorted()
         val today = LocalDate.now()
         val firstOfMonth = month.atDay(1)
         val gridOffset = firstOfMonth.dayOfWeek.value - 1
-            val onDayColor = ColorPalette.fromHex(onDayColorHex)
+        
+        val onDayColor = ColorPalette.fromHex(onDayColorHex)
         val offDayColor = ColorPalette.fromHex(offDayColorHex)
 
         return (0 until 42).map { i ->
@@ -102,6 +105,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             val isWorkDay = ScheduleUtils.isWorkDaySwitchedOptimized(date, sortedSwitches, scheduleType)
             val isToday = date == today
             val isSwitchDate = switchDates.contains(date)
+            val hasEvent = calendarEvents.contains(date)
             
             val containerColor = if (isWorkDay) onDayColor else offDayColor
             val contentColor = when {
@@ -116,29 +120,39 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 isWorkDay = isWorkDay,
                 isToday = isToday,
                 isSwitchDate = isSwitchDate,
+                hasCalendarEvent = hasEvent,
                 containerColor = containerColor,
                 contentColor = contentColor
             )
         }
     }
 
-    // Background Worker: Proactive calculation for non-visible months
-    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex) {
+    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex, selectedCalendarIds) {
         withContext(Dispatchers.Default) {
             val currentCenter = pagerState.currentPage
+            
+            // If calendar events are enabled, fetch them for a wider range
+            val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
+                try {
+                    val start = YearMonth.now().plusMonths((currentCenter - initialPage - 4).toLong()).atDay(1)
+                    val end = YearMonth.now().plusMonths((currentCenter - initialPage + 4).toLong()).atEndOfMonth()
+                    CalendarUtils.getEventDates(context, start, end, selectedCalendarIds)
+                } catch (e: Exception) { emptySet() }
+            } else emptySet()
+
             for (offset in -3..3) {
-                if (offset == 0) continue // Visible month is handled synchronously for zero-latency
+                if (offset == 0) continue // Visible month handled synchronously
                 val page = currentCenter + offset
                 val month = YearMonth.now().plusMonths((page - initialPage).toLong())
                 if (!monthCache.containsKey(month)) {
-                    monthCache[month] = calculateMonthData(month)
+                    monthCache[month] = calculateMonthData(month, calendarEvents)
                 }
             }
         }
     }
 
     // Reset cache on major logic or style changes
-    LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex) {
+    LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds) {
         monthCache.clear()
     }
 
@@ -201,12 +215,14 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
             
-            // ELIMINATE BLANKING & FIX CRASH: 
-            // If cache isn't ready for the visible page, calculate it synchronously.
-            // We DO NOT update the cache here because state changes during composition
-            // are illegal and cause crashes. The cache is updated by the LaunchedEffect.
-            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, colorScheme) {
-                calculateMonthData(month)
+            // Fetch calendar events synchronously for visible page if not in cache
+            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds, colorScheme) {
+                val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
+                    try {
+                        CalendarUtils.getEventDates(context, month.atDay(1), month.atEndOfMonth(), selectedCalendarIds)
+                    } catch (e: Exception) { emptySet() }
+                } else emptySet()
+                calculateMonthData(month, calendarEvents)
             }
 
             Column {
@@ -281,11 +297,23 @@ fun DayItem(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        // Bright Orange Bar at the absolute top of the date cell for Calendar Events
+        if (dayData.hasCalendarEvent) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 2.dp)
+                    .fillMaxWidth(0.7f)
+                    .height(if (isLandscape) 3.dp else 4.dp)
+                    .background(Color(0xFFFF9800), RoundedCornerShape(2.dp))
+            )
+        }
+
         // Background Circle (The "Cell" body)
         Box(
             modifier = Modifier
-                .padding(2.dp)
-                .then(if (isLandscape) Modifier.fillMaxHeight(0.85f) else Modifier.fillMaxSize(0.9f))
+                .padding(vertical = if (isLandscape) 4.dp else 6.dp)
+                .then(if (isLandscape) Modifier.fillMaxHeight(0.75f) else Modifier.fillMaxSize(0.85f))
                 .aspectRatio(1f)
                 .graphicsLayer { 
                     clip = true
@@ -326,7 +354,7 @@ fun DayItem(
             }
         }
 
-        // Strong Green Bar at the absolute bottom of the date cell
+        // Strong Green Bar at the absolute bottom of the date cell for "Today"
         if (dayData.isToday) {
             Box(
                 modifier = Modifier

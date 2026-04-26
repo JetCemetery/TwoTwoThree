@@ -20,6 +20,8 @@ class SettingsManager(private val context: Context) {
         val SCHEDULE_TYPE = stringPreferencesKey("schedule_type")
         val ON_DAY_COLOR = stringPreferencesKey("on_day_color")
         val OFF_DAY_COLOR = stringPreferencesKey("off_day_color")
+        val LOAD_CALENDAR_EVENTS = androidx.datastore.preferences.core.booleanPreferencesKey("load_calendar_events")
+        val SELECTED_CALENDAR_IDS = stringSetPreferencesKey("selected_calendar_ids")
     }
 
     val workDayLabel: Flow<String> = context.dataStore.data.map { preferences ->
@@ -44,6 +46,14 @@ class SettingsManager(private val context: Context) {
 
     val offDayColor: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[OFF_DAY_COLOR] ?: "#795548" // Default Brown
+    }
+
+    val loadCalendarEvents: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[LOAD_CALENDAR_EVENTS] ?: false
+    }
+
+    val selectedCalendarIds: Flow<Set<String>> = context.dataStore.data.map { preferences ->
+        preferences[SELECTED_CALENDAR_IDS] ?: emptySet()
     }
 
     suspend fun updateWorkDayLabel(label: String) {
@@ -74,6 +84,19 @@ class SettingsManager(private val context: Context) {
     suspend fun updateOffDayColor(colorHex: String) {
         context.dataStore.edit { preferences ->
             preferences[OFF_DAY_COLOR] = colorHex
+        }
+    }
+
+    suspend fun updateLoadCalendarEvents(load: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[LOAD_CALENDAR_EVENTS] = load
+        }
+    }
+
+    suspend fun updateSelectedCalendarIds(ids: Set<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[SELECTED_CALENDAR_IDS] = ids
+            preferences[LOAD_CALENDAR_EVENTS] = ids.isNotEmpty()
         }
     }
 
