@@ -4,13 +4,16 @@ import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
@@ -27,9 +30,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,10 +72,13 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val onDayColorHex by settingsManager?.onDayColor?.collectAsState(initial = "#9E9E9E") ?: remember { mutableStateOf("#9E9E9E") }
     val offDayColorHex by settingsManager?.offDayColor?.collectAsState(initial = "#795548") ?: remember { mutableStateOf("#795548") }
     val selectedCalendarIds by settingsManager?.selectedCalendarIds?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
-    val loadCalendarEvents = selectedCalendarIds.isNotEmpty()
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     var showMonthPicker by remember { mutableStateOf(false) }
+    
+    // Popup state
+    var popupDate by remember { mutableStateOf<LocalDate?>(null) }
+    var popupEvents by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
     
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -84,13 +93,9 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         }
     }
 
-    // High-performance background data cache
     val monthCache = remember { mutableStateMapOf<YearMonth, List<DayViewState>>() }
     val colorScheme = MaterialTheme.colorScheme
 
-    /**
-     * Helper to calculate month data. Binary search in ScheduleUtils makes this very fast.
-     */
     fun calculateMonthData(month: YearMonth, calendarEvents: Set<LocalDate>): List<DayViewState> {
         val sortedSwitches = switchDates.toList().sorted()
         val today = LocalDate.now()
@@ -127,11 +132,11 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         }
     }
 
+    // Proactive background calculation. Clears on launch/resume due to LaunchedEffect trigger
     LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex, selectedCalendarIds) {
         withContext(Dispatchers.Default) {
             val currentCenter = pagerState.currentPage
             
-            // If calendar events are enabled, fetch them for a wider range
             val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
                 try {
                     val start = YearMonth.now().plusMonths((currentCenter - initialPage - 4).toLong()).atDay(1)
@@ -141,7 +146,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             } else emptySet()
 
             for (offset in -3..3) {
-                if (offset == 0) continue // Visible month handled synchronously
+                if (offset == 0) continue 
                 val page = currentCenter + offset
                 val month = YearMonth.now().plusMonths((page - initialPage).toLong())
                 if (!monthCache.containsKey(month)) {
@@ -151,7 +156,6 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         }
     }
 
-    // Reset cache on major logic or style changes
     LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds) {
         monthCache.clear()
     }
@@ -215,7 +219,6 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
             
-            // Fetch calendar events synchronously for visible page if not in cache
             val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds, colorScheme) {
                 val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
                     try {
@@ -232,8 +235,72 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 CalendarGrid(
                     daysData = daysData,
                     isLandscape = isLandscape,
-                    onDayLongClick = { showSwitchDialog = it }
+                    onDayLongClick = { showSwitchDialog = it },
+                    onDayClick = { date ->
+                        if (selectedCalendarIds.isNotEmpty()) {
+                            scope.launch {
+                                val events = withContext(Dispatchers.IO) {
+                                    CalendarUtils.getEventsForDate(context, date, selectedCalendarIds)
+                                }
+                                if (events.isNotEmpty()) {
+                                    popupEvents = events
+                                    popupDate = date
+                                }
+                            }
+                        }
+                    }
                 )
+            }
+        }
+        
+        // Event Popup - Moved outside Pager to prevent multiple instances
+        popupDate?.let { date ->
+            Popup(
+                alignment = Alignment.Center,
+                onDismissRequest = { popupDate = null },
+                properties = PopupProperties(focusable = true)
+            ) {
+                Card(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .widthIn(max = 300.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Events on ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val showAccount = popupEvents.size <= 3
+                        
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 200.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            popupEvents.forEach { event ->
+                                Text(
+                                    text = if (showAccount) "${event.accountName}: ${event.title}" else event.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                        }
+
+                        TextButton(
+                            onClick = { popupDate = null },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Close")
+                        }
+                    }
+                }
             }
         }
         
@@ -251,7 +318,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
 fun CalendarGrid(
     daysData: List<DayViewState>,
     isLandscape: Boolean,
-    onDayLongClick: (LocalDate) -> Unit
+    onDayLongClick: (LocalDate) -> Unit,
+    onDayClick: (LocalDate) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -276,7 +344,8 @@ fun CalendarGrid(
                             DayItem(
                                 dayData = dayData,
                                 isLandscape = isLandscape,
-                                onLongClick = { onDayLongClick(dayData.date) }
+                                onLongClick = { onDayLongClick(dayData.date) },
+                                onClick = { onDayClick(dayData.date) }
                             )
                         }
                     }
@@ -291,79 +360,101 @@ fun CalendarGrid(
 fun DayItem(
     dayData: DayViewState,
     isLandscape: Boolean,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         contentAlignment = Alignment.Center
     ) {
-        // Bright Orange Bar at the absolute top of the date cell for Calendar Events
-        if (dayData.hasCalendarEvent) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 2.dp)
-                    .fillMaxWidth(0.7f)
-                    .height(if (isLandscape) 3.dp else 4.dp)
-                    .background(Color(0xFFFF9800), RoundedCornerShape(2.dp))
-            )
-        }
-
-        // Background Circle (The "Cell" body)
+        // Uniform Container Box: Constrained by height in landscape to prevent overlapping rows
         Box(
             modifier = Modifier
-                .padding(vertical = if (isLandscape) 4.dp else 6.dp)
-                .then(if (isLandscape) Modifier.fillMaxHeight(0.75f) else Modifier.fillMaxSize(0.85f))
-                .aspectRatio(1f)
-                .graphicsLayer { 
-                    clip = true
-                    shape = CircleShape
-                }
-                .background(dayData.containerColor)
-                .combinedClickable(
-                    onClick = { },
-                    onLongClick = onLongClick
-                ),
+                .then(if (isLandscape) Modifier.fillMaxHeight(0.95f) else Modifier.fillMaxSize(0.85f))
+                .aspectRatio(1f),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val baseStyle = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
-                Text(
-                    text = dayData.date.dayOfMonth.toString(),
-                    color = dayData.contentColor,
-                    style = if (dayData.isSwitchDate) {
-                        baseStyle.copy(
-                            fontSize = (baseStyle.fontSize.value + 1).sp,
-                            fontWeight = FontWeight.Bold,
-                            fontStyle = FontStyle.Italic
-                        )
-                    } else {
-                        baseStyle.copy(
-                            fontWeight = if (dayData.isToday) FontWeight.Bold else FontWeight.Normal
+            // Core Date Circle: Sized relative to the container
+            Box(
+                modifier = Modifier
+                    .fillMaxSize(if (isLandscape) 0.65f else 0.85f)
+                    .aspectRatio(1f)
+                    .background(dayData.containerColor, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val baseStyle = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
+                    Text(
+                        text = dayData.date.dayOfMonth.toString(),
+                        color = dayData.contentColor,
+                        style = if (dayData.isSwitchDate) {
+                            baseStyle.copy(
+                                fontSize = (baseStyle.fontSize.value + 1).sp,
+                                fontWeight = FontWeight.Bold,
+                                fontStyle = FontStyle.Italic
+                            )
+                        } else {
+                            baseStyle.copy(
+                                fontWeight = if (dayData.isToday) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                    if (dayData.isWorkDay) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 1.dp)
+                                .size(if (isLandscape) 2.dp else 4.dp)
+                                .background(dayData.contentColor, CircleShape)
                         )
                     }
-                )
-                if (dayData.isWorkDay) {
+                }
+            }
+
+            // High-Visibility Indicators
+            if (isLandscape) {
+                // Landscape: Concentric Encompassing Rings
+                if (dayData.hasCalendarEvent) {
                     Box(
                         modifier = Modifier
-                            .padding(top = 1.dp)
-                            .size(if (isLandscape) 2.dp else 4.dp)
-                            .background(dayData.contentColor, CircleShape)
+                            .fillMaxSize(0.82f)
+                            .aspectRatio(1f)
+                            .border(1.5.dp, Color(0xFFFF9800), CircleShape)
+                    )
+                }
+                if (dayData.isToday) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize(1.0f)
+                            .aspectRatio(1f)
+                            .border(1.5.dp, Color(0xFF2E7D32), CircleShape)
+                    )
+                }
+            } else {
+                // Portrait: Precision Bars (anchored 2dp from circle)
+                if (dayData.hasCalendarEvent) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth(0.65f)
+                            .height(3.dp)
+                            .background(Color(0xFFFF9800), RoundedCornerShape(2.dp))
+                    )
+                }
+                if (dayData.isToday) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(0.65f)
+                            .height(3.dp)
+                            .background(Color(0xFF2E7D32), RoundedCornerShape(2.dp))
                     )
                 }
             }
-        }
-
-        // Strong Green Bar at the absolute bottom of the date cell for "Today"
-        if (dayData.isToday) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 2.dp)
-                    .fillMaxWidth(0.7f)
-                    .height(if (isLandscape) 3.dp else 4.dp)
-                    .background(Color(0xFF2E7D32), RoundedCornerShape(2.dp))
-            )
         }
     }
 }

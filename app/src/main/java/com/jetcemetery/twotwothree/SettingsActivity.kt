@@ -195,7 +195,6 @@ fun SettingsScreen(
             text = {
                 Text(
                     "Simple ad free, ad tracking free, no data collected, app that helps you track on and off days. Lets you swap days and unswap days if needed. \n\n" +
-                            "This app is verified offline. It explicitly does not request Internet permissions from Android, meaning it is physically unable to send or receive data.\n\n" +
                             "Life is hard already, let this ease some burden off."
                 )
             },
@@ -378,12 +377,6 @@ fun SettingsScreen(
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Verified Offline: No Internet Permissions Requested",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
