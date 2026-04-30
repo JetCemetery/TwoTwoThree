@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -169,7 +168,6 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { settingsManager?.toggleSwitchDate(date) }
-                    showSwitchDialog = null
                 }) { Text("Yes") }
             },
             dismissButton = {
@@ -577,8 +575,8 @@ fun YearMonthPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (YearMonth) -> Unit
 ) {
-    var selectedMonth by remember { mutableStateOf(initialMonth.monthValue) }
-    var selectedYear by remember { mutableStateOf(initialMonth.year) }
+    var selectedMonth by remember { mutableIntStateOf(initialMonth.monthValue) }
+    var selectedYear by remember { mutableIntStateOf(initialMonth.year) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

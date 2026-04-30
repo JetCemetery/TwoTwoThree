@@ -28,6 +28,15 @@ object ScheduleUtils {
                     else -> false
                 }
             }
+            "2-2-5-5" -> {
+                when (normalizedDays.toInt()) {
+                    0, 1 -> true        // Mon, Tue (Week A) - 2 ON
+                    2, 3 -> false       // Wed, Thu (Week A) - 2 OFF
+                    4, 5, 6, 7, 8 -> true // Fri, Sat, Sun (Week A) + Mon, Tue (Week B) - 5 ON
+                    9, 10, 11, 12, 13 -> false // Wed, Thu, Fri, Sat, Sun (Week B) - 5 OFF
+                    else -> false
+                }
+            }
             else -> { // Default 2-2-3
                 when (normalizedDays.toInt()) {
                     0, 1 -> true   // Mon, Tue (Week A)

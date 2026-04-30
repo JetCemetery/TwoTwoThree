@@ -321,22 +321,38 @@ fun SettingsScreen(
 
         Text("Select Schedule Type", style = MaterialTheme.typography.titleMedium)
         
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            FilterChip(
-                selected = currentScheduleType == "2-2-3",
-                onClick = { if (currentScheduleType != "2-2-3") showScheduleWarning = "2-2-3" },
-                label = { Text("2-2-3 Schedule") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = currentScheduleType == "5-2",
-                onClick = { if (currentScheduleType != "5-2") showScheduleWarning = "5-2" },
-                label = { Text("5-2 Schedule") },
-                modifier = Modifier.weight(1f)
-            )
+        var scheduleExpanded by remember { mutableStateOf(false) }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { scheduleExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(currentScheduleType, style = MaterialTheme.typography.bodyMedium)
+                    Icon(painter = painterResource(id = R.drawable.calendar), contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
+            DropdownMenu(
+                expanded = scheduleExpanded,
+                onDismissRequest = { scheduleExpanded = false },
+                modifier = Modifier.fillMaxWidth(0.9f)
+            ) {
+                listOf("2-2-3", "5-2", "2-2-5-5").forEach { type ->
+                    DropdownMenuItem(
+                        text = { Text(type) },
+                        onClick = {
+                            if (currentScheduleType != type) {
+                                showScheduleWarning = type
+                            }
+                            scheduleExpanded = false
+                        }
+                    )
+                }
+            }
         }
 
         HorizontalDivider()
