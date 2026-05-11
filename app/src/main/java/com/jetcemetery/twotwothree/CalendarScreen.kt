@@ -168,6 +168,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { settingsManager?.toggleSwitchDate(date) }
+                    showSwitchDialog = null
                 }) { Text("Yes") }
             },
             dismissButton = {

@@ -13,8 +13,8 @@ android {
         applicationId = "com.jetcemetery.twotwothree"
         minSdk = 34
         targetSdk = 37
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "05/11/2026"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

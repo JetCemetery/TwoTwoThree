@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.jetcemetery.twotwothree.ui.theme.TwoTwoThreeTheme
@@ -195,6 +196,7 @@ fun SettingsScreen(
             text = {
                 Text(
                     "Simple ad free, ad tracking free, no data collected, app that helps you track on and off days. Lets you swap days and unswap days if needed. \n\n" +
+                            "This app is verified offline. It explicitly does not request Internet permissions from Android, meaning it is physically unable to send or receive data.\n\n" +
                             "Life is hard already, let this ease some burden off."
                 )
             },
@@ -213,67 +215,69 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Labels", style = MaterialTheme.typography.titleMedium)
+        Text("Schedule Options", style = MaterialTheme.typography.titleMedium)
         
-        Column {
-            OutlinedTextField(
-                value = onDayText,
-                onValueChange = { input ->
-                    val filtered = input.replace("\n", "").take(20)
-                    onDayText = filtered
-                },
-                label = { Text("On Day") },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. Work Day or 🏢") },
-                singleLine = true
-            )
-            if (onDayText.length >= 20) {
-                Text(
-                    "Maximum character limit reached",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        // On Day Settings Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = onDayText,
+                    onValueChange = { input ->
+                        val filtered = input.replace("\n", "").take(20)
+                        onDayText = filtered
+                    },
+                    label = { Text("On Day Text") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. Work") },
+                    singleLine = true
+                )
+                if (onDayText.length >= 20) {
+                    Text("Max limit reached", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Box(modifier = Modifier.weight(0.6f)) {
+                ColorDropdown(
+                    label = "Color",
+                    selectedHex = onDayColorHex,
+                    onColorSelected = { onDayColorHex = it }
                 )
             }
         }
 
-        Column {
-            OutlinedTextField(
-                value = offDayText,
-                onValueChange = { input ->
-                    val filtered = input.replace("\n", "").take(20)
-                    offDayText = filtered
-                },
-                label = { Text("Off Day") },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. Off Day or 🏠") },
-                singleLine = true
-            )
-            if (offDayText.length >= 20) {
-                Text(
-                    "Maximum character limit reached",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        // Off Day Settings Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = offDayText,
+                    onValueChange = { input ->
+                        val filtered = input.replace("\n", "").take(20)
+                        offDayText = filtered
+                    },
+                    label = { Text("Off Day Text") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. Off") },
+                    singleLine = true
+                )
+                if (offDayText.length >= 20) {
+                    Text("Max limit reached", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Box(modifier = Modifier.weight(0.6f)) {
+                ColorDropdown(
+                    label = "Color",
+                    selectedHex = offDayColorHex,
+                    onColorSelected = { offDayColorHex = it }
                 )
             }
         }
-
-        HorizontalDivider()
-
-        Text("Colors", style = MaterialTheme.typography.titleMedium)
-        
-        ColorDropdown(
-            label = "On Day Color",
-            selectedHex = onDayColorHex,
-            onColorSelected = { onDayColorHex = it }
-        )
-
-        ColorDropdown(
-            label = "Off Day Color",
-            selectedHex = offDayColorHex,
-            onColorSelected = { offDayColorHex = it }
-        )
 
         HorizontalDivider()
 
@@ -418,7 +422,7 @@ fun ColorDropdown(
             OutlinedButton(
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -426,16 +430,18 @@ fun ColorDropdown(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
+                            .size(18.dp)
                             .clip(CircleShape)
                             .background(ColorPalette.fromHex(selectedHex))
                             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         ColorPalette.options.find { it.hex == selectedHex }?.name ?: "Custom",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
