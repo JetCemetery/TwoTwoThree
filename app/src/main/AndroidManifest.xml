@@ -32,6 +32,11 @@
             android:exported="false"
             android:label="Settings"
             android:theme="@style/Theme.TwoTwoThree" />
+        <activity
+            android:name=".InfoActivity"
+            android:exported="false"
+            android:label="Information"
+            android:theme="@style/Theme.TwoTwoThree" />
     </application>
 
 </manifest>

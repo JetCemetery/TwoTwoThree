@@ -2,6 +2,7 @@ package com.jetcemetery.twotwothree
 
 import android.content.Intent
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
@@ -43,7 +45,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
-import java.util.*
+import androidx.compose.ui.platform.LocalLocale
 
 /**
  * Immutable data class representing the final visual state of a day.
@@ -85,6 +87,12 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val initialPage = 500
     val pagerState = rememberPagerState(initialPage = initialPage) { 1000 }
     val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = pagerState.currentPage != initialPage) {
+        scope.launch {
+            pagerState.animateScrollToPage(initialPage)
+        }
+    }
 
     val currentMonth by remember {
         derivedStateOf {
@@ -141,7 +149,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                     val start = YearMonth.now().plusMonths((currentCenter - initialPage - 4).toLong()).atDay(1)
                     val end = YearMonth.now().plusMonths((currentCenter - initialPage + 4).toLong()).atEndOfMonth()
                     CalendarUtils.getEventDates(context, start, end, selectedCalendarIds)
-                } catch (e: Exception) { emptySet() }
+                } catch (_: Exception) { emptySet() }
             } else emptySet()
 
             for (offset in -3..3) {
@@ -161,20 +169,23 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
 
     // Confirmation Dialog
     showSwitchDialog?.let { date ->
-        AlertDialog(
-            onDismissRequest = { showSwitchDialog = null },
-            title = { Text("Switch Schedule?") },
-            text = { Text("Do you want to switch the schedule starting from ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())}? This will affect all following days.") },
-            confirmButton = {
+        AlertDialog(onDismissRequest = { showSwitchDialog = null }, title = { Text("Switch Schedule?") }, text = {
+                Text(
+                    "Do you want to switch the schedule starting from ${date.dayOfMonth} ${
+                        date.month.getDisplayName(
+                            TextStyle.FULL,
+                            LocalLocale.current.platformLocale
+                        )
+                    }? This will affect all following days."
+                )
+            }, confirmButton = {
                 TextButton(onClick = {
                     scope.launch { settingsManager?.toggleSwitchDate(date) }
                     showSwitchDialog = null
                 }) { Text("Yes") }
-            },
-            dismissButton = {
+            }, dismissButton = {
                 TextButton(onClick = { showSwitchDialog = null }) { Text("No") }
-            }
-        )
+            })
     }
 
     if (showMonthPicker) {
@@ -201,6 +212,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             compact = isLandscape,
             onTodayClick = { scope.launch { pagerState.scrollToPage(initialPage) } },
             onSettingsClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) },
+            onInfoClick = { context.startActivity(Intent(context, InfoActivity::class.java)) },
             onMonthClick = { showMonthPicker = true }
         )
         
@@ -222,7 +234,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
                     try {
                         CalendarUtils.getEventDates(context, month.atDay(1), month.atEndOfMonth(), selectedCalendarIds)
-                    } catch (e: Exception) { emptySet() }
+                    } catch (_: Exception) { emptySet() }
                 } else emptySet()
                 calculateMonthData(month, calendarEvents)
             }
@@ -268,7 +280,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Events on ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())}",
+                            text = "Events on ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -500,6 +512,7 @@ fun CalendarHeader(
     compact: Boolean = false,
     onTodayClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onInfoClick: () -> Unit,
     onMonthClick: () -> Unit
 ) {
     Surface(
@@ -510,12 +523,13 @@ fun CalendarHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { onMonthClick() }
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onMonthClick() }
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.calendar),
@@ -525,18 +539,26 @@ fun CalendarHeader(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "${currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${currentMonth.year}",
+                    text = "${currentMonth.month.getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale)} ${currentMonth.year}",
                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                //IconButton(
+                //    onClick = onTodayClick,
+                //    modifier = if (compact) Modifier.size(32.dp) else Modifier
+                //) {
+                //    Icon(Icons.Default.Today, contentDescription = "Today")
+                //}
                 IconButton(
-                    onClick = onTodayClick,
+                    onClick = onInfoClick,
                     modifier = if (compact) Modifier.size(32.dp) else Modifier
                 ) {
-                    Icon(Icons.Default.Today, contentDescription = "Today")
+                    Icon(Icons.Default.Info, contentDescription = "Info")
                 }
                 IconButton(
                     onClick = onSettingsClick,
@@ -627,7 +649,7 @@ fun YearMonthPickerDialog(
                                 contentPadding = PaddingValues(horizontal = 8.dp)
                             ) {
                                 Text(
-                                    java.time.Month.of(selectedMonth).getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                                    java.time.Month.of(selectedMonth).getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -636,7 +658,7 @@ fun YearMonthPickerDialog(
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                java.time.Month.of(month).getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                                                java.time.Month.of(month).getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale),
                                                 style = MaterialTheme.typography.bodyMedium
                                             )
                                         },

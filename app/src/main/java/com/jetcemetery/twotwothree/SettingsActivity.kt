@@ -195,9 +195,9 @@ fun SettingsScreen(
             title = { Text("About") },
             text = {
                 Text(
-                    "Simple ad free, ad tracking free, no data collected, app that helps you track on and off days. Lets you swap days and unswap days if needed. \n\n" +
-                            "This app is verified offline. It explicitly does not request Internet permissions from Android, meaning it is physically unable to send or receive data.\n\n" +
-                            "Life is hard already, let this ease some burden off."
+                    "Simple ad free, tracking free, no data collected, app that helps you track on and off days. Lets you swap days and unswap days if needed. \n\n" +
+                            "Life is hard already, let this ease some burden off. \n\n" +
+                    "App made by an Aerospace Engineer"
                 )
             },
             confirmButton = {
@@ -386,19 +386,6 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.weight(1f))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.calendar),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
 
         Text(
             text = "Changes will be applied throughout the app after saving.",
