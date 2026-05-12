@@ -15,5 +15,5 @@
 local.properties
 /app/release/app-release.aab
 /.idea/deviceManager.xml
-/.idea/deploymentTargetSelector.xml
 /.idea/planningMode.xml
+/.idea/deploymentTargetSelector.xml

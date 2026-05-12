@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.jetcemetery.twotwothree"
-        minSdk = 34
+        minSdk = 29
         targetSdk = 37
-        versionCode = 4
-        versionName = "05/12/2026"
+        versionCode = 5
+        versionName = "06/26/2026"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
