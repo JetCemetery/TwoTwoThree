@@ -22,6 +22,7 @@ class SettingsManager(private val context: Context) {
         val OFF_DAY_COLOR = stringPreferencesKey("off_day_color")
         val LOAD_CALENDAR_EVENTS = androidx.datastore.preferences.core.booleanPreferencesKey("load_calendar_events")
         val SELECTED_CALENDAR_IDS = stringSetPreferencesKey("selected_calendar_ids")
+        val SCHOOL_CLOSED_DATES = stringSetPreferencesKey("school_closed_dates")
     }
 
     val workDayLabel: Flow<String> = context.dataStore.data.map { preferences ->
@@ -54,6 +55,10 @@ class SettingsManager(private val context: Context) {
 
     val selectedCalendarIds: Flow<Set<String>> = context.dataStore.data.map { preferences ->
         preferences[SELECTED_CALENDAR_IDS] ?: emptySet()
+    }
+
+    val schoolClosedDates: Flow<Set<LocalDate>> = context.dataStore.data.map { preferences ->
+        preferences[SCHOOL_CLOSED_DATES]?.map { LocalDate.parse(it) }?.toSet() ?: emptySet()
     }
 
     suspend fun updateWorkDayLabel(label: String) {
@@ -110,6 +115,19 @@ class SettingsManager(private val context: Context) {
                 current.add(dateStr)
             }
             preferences[SWITCH_DATES] = current
+        }
+    }
+
+    suspend fun toggleSchoolClosedDate(date: LocalDate) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[SCHOOL_CLOSED_DATES]?.toMutableSet() ?: mutableSetOf()
+            val dateStr = date.toString()
+            if (current.contains(dateStr)) {
+                current.remove(dateStr)
+            } else {
+                current.add(dateStr)
+            }
+            preferences[SCHOOL_CLOSED_DATES] = current
         }
     }
 }

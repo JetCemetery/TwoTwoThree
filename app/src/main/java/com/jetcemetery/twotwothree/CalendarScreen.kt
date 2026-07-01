@@ -16,7 +16,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
@@ -25,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -57,6 +61,7 @@ data class DayViewState(
     val isWorkDay: Boolean,
     val isToday: Boolean,
     val isSwitchDate: Boolean,
+    val isSchoolClosed: Boolean,
     val hasCalendarEvent: Boolean,
     val containerColor: Color,
     val contentColor: Color
@@ -68,14 +73,16 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val context = LocalContext.current
     val workDayLabel by settingsManager?.workDayLabel?.collectAsState(initial = "Work Day") ?: remember { mutableStateOf("Work Day") }
     val offDayLabel by settingsManager?.offDayLabel?.collectAsState(initial = "Off Day") ?: remember { mutableStateOf("Off Day") }
-    val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
+    val switchDates by settingsManager?.switchDates?.collectAsState(initial = emptySet<LocalDate>()) ?: remember { mutableStateOf(emptySet<LocalDate>()) }
     val scheduleType by settingsManager?.scheduleType?.collectAsState(initial = "2-2-3") ?: remember { mutableStateOf("2-2-3") }
     val onDayColorHex by settingsManager?.onDayColor?.collectAsState(initial = "#9E9E9E") ?: remember { mutableStateOf("#9E9E9E") }
     val offDayColorHex by settingsManager?.offDayColor?.collectAsState(initial = "#795548") ?: remember { mutableStateOf("#795548") }
-    val selectedCalendarIds by settingsManager?.selectedCalendarIds?.collectAsState(initial = emptySet()) ?: remember { mutableStateOf(emptySet()) }
+    val selectedCalendarIds by settingsManager?.selectedCalendarIds?.collectAsState(initial = emptySet<String>()) ?: remember { mutableStateOf(emptySet<String>()) }
+    val schoolClosedDates by settingsManager?.schoolClosedDates?.collectAsState(initial = emptySet<LocalDate>()) ?: remember { mutableStateOf(emptySet<LocalDate>()) }
     
     var showSwitchDialog by remember { mutableStateOf<LocalDate?>(null) }
     var showMonthPicker by remember { mutableStateOf(false) }
+    var isSchoolMode by remember { mutableStateOf(false) }
     
     // Popup state
     var popupDate by remember { mutableStateOf<LocalDate?>(null) }
@@ -88,9 +95,13 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val pagerState = rememberPagerState(initialPage = initialPage) { 1000 }
     val scope = rememberCoroutineScope()
 
-    BackHandler(enabled = pagerState.currentPage != initialPage) {
-        scope.launch {
-            pagerState.animateScrollToPage(initialPage)
+    BackHandler(enabled = isSchoolMode || pagerState.currentPage != initialPage) {
+        if (isSchoolMode) {
+            isSchoolMode = false
+        } else {
+            scope.launch {
+                pagerState.animateScrollToPage(initialPage)
+            }
         }
     }
 
@@ -103,7 +114,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     val monthCache = remember { mutableStateMapOf<YearMonth, List<DayViewState>>() }
     val colorScheme = MaterialTheme.colorScheme
 
-    fun calculateMonthData(month: YearMonth, calendarEvents: Set<LocalDate>): List<DayViewState> {
+    fun calculateMonthData(month: YearMonth, calendarEvents: Set<LocalDate>, schoolClosedDates: Set<LocalDate>): List<DayViewState> {
         val sortedSwitches = switchDates.toList().sorted()
         val today = LocalDate.now()
         val firstOfMonth = month.atDay(1)
@@ -117,10 +128,13 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
             val isWorkDay = ScheduleUtils.isWorkDaySwitchedOptimized(date, sortedSwitches, scheduleType)
             val isToday = date == today
             val isSwitchDate = switchDates.contains(date)
+            val isSchoolClosed = schoolClosedDates.contains(date)
             val hasEvent = calendarEvents.contains(date)
             
             val containerColor = if (isWorkDay) onDayColor else offDayColor
             val contentColor = when {
+                isSchoolClosed && isWorkDay -> ColorPalette.getContrastColor(onDayColor)
+                isSchoolClosed && !isWorkDay -> ColorPalette.getContrastColor(offDayColor)
                 isSwitchDate -> Color(0xFF2E7D32)
                 isWorkDay -> ColorPalette.getContrastColor(onDayColor)
                 else -> ColorPalette.getContrastColor(offDayColor)
@@ -132,6 +146,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 isWorkDay = isWorkDay,
                 isToday = isToday,
                 isSwitchDate = isSwitchDate,
+                isSchoolClosed = isSchoolClosed,
                 hasCalendarEvent = hasEvent,
                 containerColor = containerColor,
                 contentColor = contentColor
@@ -140,7 +155,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
     }
 
     // Proactive background calculation. Clears on launch/resume due to LaunchedEffect trigger
-    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex, selectedCalendarIds) {
+    LaunchedEffect(pagerState.currentPage, switchDates, scheduleType, colorScheme, onDayColorHex, offDayColorHex, selectedCalendarIds, schoolClosedDates) {
         withContext(Dispatchers.Default) {
             val currentCenter = pagerState.currentPage
             
@@ -157,13 +172,13 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 val page = currentCenter + offset
                 val month = YearMonth.now().plusMonths((page - initialPage).toLong())
                 if (!monthCache.containsKey(month)) {
-                    monthCache[month] = calculateMonthData(month, calendarEvents)
+                    monthCache[month] = calculateMonthData(month, calendarEvents, schoolClosedDates)
                 }
             }
         }
     }
 
-    LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds) {
+    LaunchedEffect(switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds, schoolClosedDates) {
         monthCache.clear()
     }
 
@@ -210,33 +225,49 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
         CalendarHeader(
             currentMonth = currentMonth,
             compact = isLandscape,
+            isSchoolMode = isSchoolMode,
             onTodayClick = { scope.launch { pagerState.scrollToPage(initialPage) } },
             onSettingsClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) },
             onInfoClick = { context.startActivity(Intent(context, InfoActivity::class.java)) },
-            onMonthClick = { showMonthPicker = true }
+            onMonthClick = { showMonthPicker = true },
+            onSchoolClick = { isSchoolMode = !isSchoolMode }
         )
         
-        if (!isLandscape) {
-            Spacer(modifier = Modifier.height(8.dp))
-            DayOfWeekHeader()
-        }
+        Box(modifier = Modifier.weight(1f)) {
+            if (isSchoolMode) {
+                Icon(
+                    imageVector = Icons.Default.LibraryBooks,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(48.dp)
+                        .graphicsLayer(alpha = 0.15f),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.Top,
-            beyondViewportPageCount = 2,
-            key = { it }
-        ) { page ->
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (!isLandscape) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    DayOfWeekHeader()
+                }
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.Top,
+                    beyondViewportPageCount = 2,
+                    key = { it }
+                ) { page ->
             val month = remember(page) { YearMonth.now().plusMonths((page - initialPage).toLong()) }
             
-            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds, colorScheme) {
+            val daysData = monthCache[month] ?: remember(month, switchDates, scheduleType, onDayColorHex, offDayColorHex, selectedCalendarIds, schoolClosedDates, colorScheme) {
                 val calendarEvents = if (selectedCalendarIds.isNotEmpty()) {
                     try {
                         CalendarUtils.getEventDates(context, month.atDay(1), month.atEndOfMonth(), selectedCalendarIds)
                     } catch (_: Exception) { emptySet() }
                 } else emptySet()
-                calculateMonthData(month, calendarEvents)
+                calculateMonthData(month, calendarEvents, schoolClosedDates)
             }
 
             Column {
@@ -246,9 +277,19 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 CalendarGrid(
                     daysData = daysData,
                     isLandscape = isLandscape,
-                    onDayLongClick = { showSwitchDialog = it },
+                    onDayLongClick = { 
+                        if (isSchoolMode) {
+                            scope.launch { settingsManager?.toggleSchoolClosedDate(it) }
+                        } else {
+                            showSwitchDialog = it 
+                        }
+                    },
                     onDayClick = { date ->
-                        if (selectedCalendarIds.isNotEmpty()) {
+                        if (isSchoolMode) {
+                            // In school mode, maybe tap should also toggle? 
+                            // Prompt says "When they do a long hold on a specific date, the icon for that date switches"
+                            // So I'll stick to long hold as requested.
+                        } else if (selectedCalendarIds.isNotEmpty()) {
                             scope.launch {
                                 val events = withContext(Dispatchers.IO) {
                                     CalendarUtils.getEventsForDate(context, date, selectedCalendarIds)
@@ -263,6 +304,8 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 )
             }
         }
+    }
+}
         
         // Event Popup - Moved outside Pager to prevent multiple instances
         popupDate?.let { date ->
@@ -391,38 +434,49 @@ fun DayItem(
             contentAlignment = Alignment.Center
         ) {
             // Core Date Circle: Sized relative to the container
-            Box(
-                modifier = Modifier
-                    .fillMaxSize(if (isLandscape) 0.65f else 0.85f)
-                    .aspectRatio(1f)
-                    .background(dayData.containerColor, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val baseStyle = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
-                    Text(
-                        text = dayData.date.dayOfMonth.toString(),
-                        color = dayData.contentColor,
-                        style = if (dayData.isSwitchDate) {
-                            baseStyle.copy(
-                                fontSize = (baseStyle.fontSize.value + 1).sp,
-                                fontWeight = FontWeight.Bold,
-                                fontStyle = FontStyle.Italic
-                            )
-                        } else {
-                            baseStyle.copy(
-                                fontWeight = if (dayData.isToday) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    )
-                    if (dayData.isWorkDay) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 1.dp)
-                                .size(if (isLandscape) 2.dp else 4.dp)
-                                .background(dayData.contentColor, CircleShape)
+            if (dayData.isSchoolClosed) {
+                Icon(
+                    imageVector = Icons.Default.School,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize(if (isLandscape) 0.65f else 0.85f)
+                        .aspectRatio(1f),
+                    tint = dayData.containerColor
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize(if (isLandscape) 0.65f else 0.85f)
+                        .aspectRatio(1f)
+                        .background(dayData.containerColor, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {}
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val baseStyle = if (isLandscape) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge
+                Text(
+                    text = dayData.date.dayOfMonth.toString(),
+                    color = dayData.contentColor,
+                    style = if (dayData.isSwitchDate) {
+                        baseStyle.copy(
+                            fontSize = (baseStyle.fontSize.value + 1).sp,
+                            fontWeight = FontWeight.Bold,
+                            fontStyle = FontStyle.Italic
+                        )
+                    } else {
+                        baseStyle.copy(
+                            fontWeight = if (dayData.isToday) FontWeight.Bold else FontWeight.Normal
                         )
                     }
+                )
+                if (dayData.isWorkDay && !dayData.isSchoolClosed) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 1.dp)
+                            .size(if (isLandscape) 2.dp else 4.dp)
+                            .background(dayData.contentColor, CircleShape)
+                    )
                 }
             }
 
@@ -510,10 +564,12 @@ fun LegendItem(color: Color, label: String, border: Boolean = false) {
 fun CalendarHeader(
     currentMonth: YearMonth,
     compact: Boolean = false,
+    isSchoolMode: Boolean = false,
     onTodayClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onInfoClick: () -> Unit,
-    onMonthClick: () -> Unit
+    onMonthClick: () -> Unit,
+    onSchoolClick: () -> Unit
 ) {
     Surface(
         tonalElevation = 2.dp,
@@ -539,7 +595,7 @@ fun CalendarHeader(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "${currentMonth.month.getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale)} ${currentMonth.year}",
+                    text = if (isSchoolMode) "School Closed Days" else "${currentMonth.month.getDisplayName(TextStyle.FULL, LocalLocale.current.platformLocale)} ${currentMonth.year}",
                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -548,23 +604,32 @@ fun CalendarHeader(
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                //IconButton(
-                //    onClick = onTodayClick,
-                //    modifier = if (compact) Modifier.size(32.dp) else Modifier
-                //) {
-                //    Icon(Icons.Default.Today, contentDescription = "Today")
-                //}
-                IconButton(
-                    onClick = onInfoClick,
-                    modifier = if (compact) Modifier.size(32.dp) else Modifier
-                ) {
-                    Icon(Icons.Default.Info, contentDescription = "Info")
-                }
-                IconButton(
-                    onClick = onSettingsClick,
-                    modifier = if (compact) Modifier.size(32.dp) else Modifier
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                if (isSchoolMode) {
+                    IconButton(
+                        onClick = onSchoolClick,
+                        modifier = if (compact) Modifier.size(32.dp) else Modifier
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = "Done", tint = Color(0xFF2E7D32))
+                    }
+                } else {
+                    IconButton(
+                        onClick = onSchoolClick,
+                        modifier = if (compact) Modifier.size(32.dp) else Modifier
+                    ) {
+                        Icon(Icons.Default.School, contentDescription = "School")
+                    }
+                    IconButton(
+                        onClick = onInfoClick,
+                        modifier = if (compact) Modifier.size(32.dp) else Modifier
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = "Info")
+                    }
+                    IconButton(
+                        onClick = onSettingsClick,
+                        modifier = if (compact) Modifier.size(32.dp) else Modifier
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
                 }
             }
         }
