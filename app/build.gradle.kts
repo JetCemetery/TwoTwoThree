@@ -11,8 +11,8 @@ android {
         applicationId = "com.jetcemetery.twotwothree"
         minSdk = 29
         targetSdk = 37
-        versionCode = 6
-        versionName = "07/01/2026"
+        versionCode = 7
+        versionName = "07/02/2026"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

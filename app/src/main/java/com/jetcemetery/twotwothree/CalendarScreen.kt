@@ -317,7 +317,7 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                 Card(
                     modifier = Modifier
                         .padding(16.dp)
-                        .widthIn(max = 300.dp),
+                        .widthIn(min = 280.dp, max = 450.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -329,18 +329,31 @@ fun CalendarScreen(modifier: Modifier = Modifier, settingsManager: SettingsManag
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        val showAccount = popupEvents.size <= 3
+                        val distinctAccounts = remember(popupEvents) { popupEvents.map { it.accountName }.distinct() }
+                        val showAccount = distinctAccounts.size > 1
+                        val commonDomain = remember(distinctAccounts) {
+                            if (distinctAccounts.size > 1) {
+                                val domains = distinctAccounts.map { it.substringAfter("@", "") }
+                                if (domains.all { it == domains.first() && it.isNotEmpty() }) "@${domains.first()}" else null
+                            } else null
+                        }
                         
                         Column(
                             modifier = Modifier
-                                .heightIn(max = 200.dp)
+                                .heightIn(max = 250.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
                             popupEvents.forEach { event ->
+                                val displayName = when {
+                                    !showAccount -> ""
+                                    commonDomain != null -> event.accountName.removeSuffix(commonDomain)
+                                    else -> event.accountName
+                                }
+                                
                                 Text(
-                                    text = if (showAccount) "${event.accountName}: ${event.title}" else event.title,
+                                    text = if (displayName.isNotEmpty()) "$displayName: ${event.title}" else event.title,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
